@@ -1,0 +1,27 @@
+{
+  "name": "ist-iata_1",
+  "version": "1.0.0",
+  "description": "Second version of IST scrapping app",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ChewBaccaYeti/IST-IATA_1.git"
+  },
+  "author": "Venedykt Mitishov",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/ChewBaccaYeti/IST-IATA_1/issues"
+  },
+  "homepage": "https://github.com/ChewBaccaYeti/IST-IATA_1#readme",
+  "dependencies": {
+    "async": "^3.2.5",
+    "express": "^4.18.2",
+    "lodash": "^4.17.21",
+    "moment-timezone": "^0.5.44",
+    "redis": "^3.0.2",
+    "request": "^2.88.2"
+  }
+}
