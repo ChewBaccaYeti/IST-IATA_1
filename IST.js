@@ -1,5 +1,4 @@
 const _ = require('lodash');
-const { NotFound } = require('http-errors');
 const async = require('async');
 const express = require('express');
 const moment = require('moment-timezone');
@@ -22,18 +21,18 @@ const redis_key = 'airports:istanbul';
 const redis = require('redis')
     .createClient({ socket: { host: 'redis://127.0.0.1', port: 6379 } })
     .on('connect', () => {
-        console.log(`${day} [redis] connected.`)
+        console.log(`[${day}] [redis] connected.`)
     })
     .on('reconnecting', () => {
-        console.log(`${day} [redis] reconnected.`)
+        console.log(`[${day}] [redis] reconnected.`)
     })
-    .on('error', (e) => {
-        console.error(`${day} [redis] error.:`, e)
+    .on('error', (err) => {
+        console.error(`[${day}] [redis] error.:`, err)
     });
 
-redis.del(redis_key, (e, r) => {
-    if (e) {
-        console.error(`${day} [redis] deletion error:`, e)
+redis.del(redis_key, (err, r) => {
+    if (err) {
+        console.error(`[${day}] [redis] deletion error:`, err)
     } else {
         console.log(`[${day}][redis] data deleted.`)
     }
@@ -41,30 +40,31 @@ redis.del(redis_key, (e, r) => {
 
 const app = express();
 app.get('/schedules', (req, res) => {
-    redis.get(redis_key, (err, res) => {
-        const data = JSON.parse(res);
-        if (!data) {
-            throw new NotFound(err, 'Data not found.')
-        };
+    redis.get(redis_key, (err, reply) => {
+        const data = JSON.parse(reply);
+        if (!reply) return res.status(404).json({ err: 'Data not found' });
         try {
-            response.json({
+            res.json({
                 message: 'success',
                 status: 200,
                 data: {
-                    data
+                    result: data
                 }
             });
-        } catch (e) {
-            response.status(500).json({ e: 'Server error.' })
+        } catch (err) {
+            res.status(500).json({ err: 'Server error.' })
         }
     })
 }).listen(port, () => { });
 
 const redisSet = (redis_key, flights, cb) => {
-    redis.set(redis_key, JSON.stringify(flights), (e) => {
-        if (e) {
-            return cb && cb(e);
-        } else { }
+    redis.set(redis_key, JSON.stringify(flights), (err) => {
+        if (err) {
+            console.error(`[${day}][redis] set error: %j`, err);
+            return cb && cb(err);
+        } else {
+            console.log(`[${day}][redis] data set.`)
+        }
         cb && cb();
     })
 };
@@ -84,15 +84,6 @@ function dataFlights() {
     const body_size = 10;
     const page_size = 50;
     const retries = 3;
-    const r = {
-        url: base_url,
-        proxy: proxy,
-        headers: headers,
-    };
-    const d = [
-        `date=${dates[0]}`,
-        `endDate=${dates[1]}`,
-    ];
 
     let flights = [];
     let done = false;
@@ -111,11 +102,16 @@ function dataFlights() {
 
                         request.post(
                             {
-                                r,
+                                url: base_url,
+                                proxy: proxy,
+                                headers: headers,
                                 formData: {
                                     pageNumber: page,
                                     pageSize: page_size,
-                                    '': d,
+                                    '': [
+                                        `date=${dates[0]}`,
+                                        `endDate=${dates[1]}`,
+                                    ],
                                     flightNature: status,
                                     isInternational: type,
                                     searchTerm: 'changeflight',
@@ -129,27 +125,118 @@ function dataFlights() {
                                 } page++;
                                 try {
                                     const obj = JSON.parse(body);
-                                    const data = _.get(obj, 'result.data.flights', []);
                                     if (
                                         !obj.result ||
                                         !obj.result.data
                                     ) {
-                                        console.dir(obj);
-                                        console.log('body:', body);
                                         return retry_done(true);
                                     }
-                                    const flightsArray = data;
+                                    const flights_array = _.get(obj, 'result.data.flights', []);
+                                    const flights_fields = _.flatMap(flights_array, (flight) => {
+                                        const info_fields = {
+                                            'airline_iata': status === 0 ? flight.airlineCode : status === 1 ? flight.airlineCode : null,
+                                            'flight_iata': status === 0 ? flight.flightNumber : status === 1 ? flight.flightNumber : null,
+                                            'flight_number': status === 0 ? flight.flightNumber.slice(2) : status === 1 ? flight.flightNumber.slice(2) : null,
+                                            'status': flight.remark ? flight.remark.toLowerCase() : null,
+                                            'duration':
+                                                moment(status === 0 ? moment.tz(tmzn).utc(flight.scheduledDatetime).format(frmt) : null,)
+                                                    .diff(moment(status === 1 ? moment.tz(tmzn).utc(flight.estimatedDatetime).format(frmt) : null,)) || null,
+                                            'delayed':
+                                                status === 0 ? (Math.abs(moment(flight.scheduledDatetime, frmt).diff(moment(flight.estimatedDatetime, frmt), 'minutes')) || null) : null ||
+                                                    status === 1 ? (Math.abs(moment(flight.scheduledDatetime, frmt).diff(moment(flight.estimatedDatetime, frmt), 'minutes')) || null) : null,
+                                        };
+                                        const codeshare_fields = {
+                                            'cs_airline_iata': null,
+                                            'cs_flight_iata': null,
+                                            'cs_flight_number': null,
+                                        };
+                                        const arrival_fields = {
+                                            'arr_baggage': flight.carousel || null,
+                                            'arr_delayed': status === 0 ? (Math.abs(moment(flight.scheduledDatetime, frmt).diff(moment(flight.estimatedDatetime, frmt), 'minutes')) || null) : null,
+                                            'arr_gate': status === 0 ? flight.gate : null,
+                                            'arr_iata': flight.toCityCode || null,
+                                            'arr_terminal': status === 0 ? flight.gate.charAt(0) : null,
+                                            'arr_time': status === 0 ? moment(flight.scheduledDatetime).format(frmt) : null,
+                                            'arr_time_ts': status === 0 ? moment(flight.scheduledDatetime).tz(tmzn).unix() : null,
+                                            'arr_time_utc': status === 0 ? moment.tz(tmzn).utc(flight.scheduledDatetime).format(frmt) : null,
+                                        };
+                                        const dep_fields = {
+                                            'dep_checkin': status === 1 ? flight.counter : null,
+                                            'dep_delayed': status === 1 ? (Math.abs(moment(flight.scheduledDatetime, frmt).diff(moment(flight.estimatedDatetime, frmt), 'minutes')) || null) : null,
+                                            'dep_gate': status === 1 ? flight.gate : null,
+                                            'dep_iata': flight.fromCityCode || null,
+                                            'dep_terminal': status === 1 ? flight.gate.charAt(0) : null,
+                                            'dep_time': status === 1 ? moment(flight.scheduledDatetime).format(frmt) : null,
+                                            'dep_time_ts': status === 1 ? moment(flight.scheduledDatetime).tz(tmzn).unix() : null,
+                                            'dep_time_utc': status === 1 ? moment.tz(tmzn).utc(flight.scheduledDatetime).format(frmt) : null,
+                                        };
+                                        const spread_fields = {
+                                            ...info_fields,
+                                            ...codeshare_fields,
+                                            ...arrival_fields,
+                                            ...dep_fields,
+                                        };
+                                        if (status === 1 ? flight : status === 0 ? flight : null) {
+                                            flights.push(spread_fields);
+                                            if (flight.codeshare && flight.codeshare.length > 0) {
+                                                flights.push(...flight.codeshare.map((code) => ({
+                                                    ...spread_fields,
+                                                    'cs_airline_iata': flights_bucket.airline_iata || null,
+                                                    'cs_flight_number': flights_bucket.flight_number || null,
+                                                    'cs_flight_iata': flights_bucket.flight_iata || null,
+                                                    'airline_iata': status === 0 ? code.slice(0, 2) : status === 1 ? code.slice(0, 2) : null,
+                                                    'flight_iata': status === 0 ? code : status === 1 ? code : null,
+                                                    'flight_number': status === 0 ? code.slice(2, 6) : status === 1 ? code.slice(2, 6) : null,
+                                                })))
+                                            }
+                                            return spread_fields;
+                                        }
+                                    });
 
-                                } catch (e) { }
-                            })
-                        retry_done()
-                    })
-                    until_done()
-                })
-                next_type()
-            })
-            next_status()
-        })
-        next_date()
-    })
+                                    function unique_flights(arr, key) {
+                                        const duplicates = [];
+                                        const unique = [];
+                                        for (let i = 0; i < arr.length; i++) {
+                                            let is_duplicate = false;
+                                            for (let j = i + 1; j < arr.length; j++) {
+                                                if (arr[i][key] === arr[j][key]) {
+                                                    duplicates.push({ duplicate1: arr[i], duplicate2: arr[j] });
+                                                    is_duplicate = true;
+                                                    break;
+                                                }
+                                            }
+                                            if (!is_duplicate) {
+                                                unique.push(arr[i]);
+                                            }
+                                        }
+                                        return { duplicates, unique };
+                                    }
+                                    const { duplicates, unique } = unique_flights(flights, 'flight_iata');
+                                    if (duplicates.length > 0) {
+                                        flights = unique;
+                                    } else if (flights_fields.length >= page_size) {
+                                        finished = false;
+                                    } else {
+                                        finished = true;
+                                    } retry_done();
+                                    return flights;
+
+                                } catch (err) {
+                                    console.error(`[error] [${err}]`);
+                                    return retry_done(true);
+                                }
+                            }, retry_done)
+                    }, until_done)
+                }, () => {
+                    redisSet(redis_key, flights, (err) => {
+                        if (err) {
+                            console.error('Error saving data:', err);
+                        } else {
+                            console.log(`[${day}][redis] data saved.`);
+                        }
+                    });
+                }, next_type())
+            }, next_status())
+        }, next_date())
+    });
 };
