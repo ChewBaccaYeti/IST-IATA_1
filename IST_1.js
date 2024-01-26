@@ -56,7 +56,7 @@ app.get('/schedules', (req, res) => {
             res.status(500).json({ err: 'Server error.' });
         }
     })
-}).listen(port, () => { });
+}).listen(port, () => { console.log(`Server started on port ${port}`); });
 
 const redisSet = (redis_key, flights, cb) => {
     redis.set(redis_key, JSON.stringify(flights), (err) => {
