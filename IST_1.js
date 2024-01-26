@@ -21,6 +21,7 @@ const redis_key = 'airports:istanbul';
 const redis = require('redis')
     .createClient({ socket: { host: 'redis://127.0.0.1', port: 6379 } })
     .on('connect', () => {
+        dataFlights();
         console.log(`[${day}] [redis] connected.`)
     })
     .on('reconnecting', () => {
@@ -181,9 +182,9 @@ function dataFlights() {
                                             if (flight.codeshare && flight.codeshare.length > 0) {
                                                 flights.push(...flight.codeshare.map((code) => ({
                                                     ...spread_fields,
-                                                    'cs_airline_iata': flights_bucket.airline_iata || null,
-                                                    'cs_flight_number': flights_bucket.flight_number || null,
-                                                    'cs_flight_iata': flights_bucket.flight_iata || null,
+                                                    'cs_airline_iata': spread_fields.airline_iata || null,
+                                                    'cs_flight_number': spread_fields.flight_number || null,
+                                                    'cs_flight_iata': spread_fields.flight_iata || null,
                                                     'airline_iata': status === 0 ? code.slice(0, 2) : status === 1 ? code.slice(0, 2) : null,
                                                     'flight_iata': status === 0 ? code : status === 1 ? code : null,
                                                     'flight_number': status === 0 ? code.slice(2, 6) : status === 1 ? code.slice(2, 6) : null,
