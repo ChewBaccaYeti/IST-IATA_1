@@ -16,26 +16,26 @@ const frmt = 'YYYY-MM-DD HH:mm:ss';
 const tmzn = 'Europe/Istanbul';
 const day = moment().tz(tmzn);
 const dates = [day.format(frmt), day.clone().add(1, 'd').format(frmt)];
-const redis_key = 'airports:istanbul';
+const redis_key = 'airports:istanbul_1';
 
 const redis = require('redis')
     .createClient({ socket: { host: 'redis://127.0.0.1', port: 6379 } })
     .on('connect', () => {
+        console.log(`[${day}] [redis] connected.`);
         dataFlights();
-        console.log(`[${day}] [redis] connected.`)
     })
     .on('reconnecting', () => {
-        console.log(`[${day}] [redis] reconnected.`)
+        console.log(`[${day}] [redis] reconnected.`);
     })
     .on('error', (err) => {
-        console.error(`[${day}] [redis] error.:`, err)
+        console.error(`[${day}] [redis] error.:`, err);
     });
 
 redis.del(redis_key, (err, r) => {
     if (err) {
-        console.error(`[${day}] [redis] deletion error:`, err)
+        console.error(`[${day}] [redis] deletion error:`, err);
     } else {
-        console.log(`[${day}][redis] data deleted.`)
+        console.log(`[${day}][redis] data deleted.`);
     }
 });
 
@@ -53,7 +53,7 @@ app.get('/schedules', (req, res) => {
                 }
             });
         } catch (err) {
-            res.status(500).json({ err: 'Server error.' })
+            res.status(500).json({ err: 'Server error.' });
         }
     })
 }).listen(port, () => { });
@@ -64,7 +64,7 @@ const redisSet = (redis_key, flights, cb) => {
             console.error(`[${day}][redis] set error: %j`, err);
             return cb && cb(err);
         } else {
-            console.log(`[${day}][redis] data set.`)
+            console.log(`[${day}][redis] data set.`);
         }
         cb && cb();
     })
@@ -72,9 +72,9 @@ const redisSet = (redis_key, flights, cb) => {
 
 const killSignal = () => {
     console.log('Kill signal.')
-    redis && redis.end(true);
+    redis && redis.end && redis.end(true);
     setTimeout(() => {
-        console.error('Forcing kill signal.')
+        console.error('Forcing kill signal.');
         return process.exit(1);
     }, 7500);
 };
