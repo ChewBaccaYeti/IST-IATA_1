@@ -1,3 +1,4 @@
+const { NotFound } = require('http-errors');
 const _ = require('lodash');
 const async = require('async');
 const express = require('express');
@@ -16,6 +17,7 @@ const frmt = 'YYYY-MM-DD HH:mm:ss';
 const tmzn = 'Europe/Istanbul';
 const day = moment().tz(tmzn);
 const dates = [day.format(frmt), day.clone().add(1, 'd').format(frmt)];
+// const redis_url = 'redis://127.0.0.1:6379';
 const redis_key = 'airports:istanbul_1';
 
 const redis = require('redis')
@@ -24,11 +26,11 @@ const redis = require('redis')
         console.log(`[${day}] [redis] connected.`);
         dataFlights();
     })
-    .on('reconnecting', () => {
-        console.log(`[${day}] [redis] reconnected.`);
+    .on('reconnecting', (p) => {
+        console.log(`[${day}] [redis] reconnected.`, p);
     })
     .on('error', (err) => {
-        console.error(`[${day}] [redis] error.:`, err);
+        console.error(`[${day}] [redis] error:`, err);
     });
 
 redis.del(redis_key, (err, r) => {
@@ -43,7 +45,9 @@ const app = express();
 app.get('/schedules', (req, res) => {
     redis.get(redis_key, (err, reply) => {
         const data = JSON.parse(reply);
-        if (!reply) return res.status(404).json({ err: 'Data not found' });
+        if (!reply) {
+            return res.status(404).json({ error: 'Data not found.' });
+        };
         try {
             res.json({
                 message: 'success',
@@ -58,8 +62,8 @@ app.get('/schedules', (req, res) => {
     })
 }).listen(port, () => { console.log(`Server started on port ${port}`); });
 
-const redisSet = (redis_key, flights, cb) => {
-    redis.set(redis_key, JSON.stringify(flights), (err) => {
+const redisSet = (redis_key, ist_flights, cb) => {
+    redis.set(redis_key, JSON.stringify(ist_flights), (err) => {
         if (err) {
             console.error(`[${day}][redis] set error: %j`, err);
             return cb && cb(err);
@@ -84,9 +88,9 @@ process.once('SIGINT', killSignal);
 function dataFlights() {
     const body_size = 10;
     const page_size = 50;
-    const retries = 3;
+    const retries = 5;
 
-    let flights = [];
+    let ist_flights = [];
     let done = false;
     let page = 1;
     let tries = 0;
@@ -178,9 +182,9 @@ function dataFlights() {
                                             ...dep_fields,
                                         };
                                         if (status === 1 ? flight : status === 0 ? flight : null) {
-                                            flights.push(spread_fields);
+                                            ist_flights.push(spread_fields);
                                             if (flight.codeshare && flight.codeshare.length > 0) {
-                                                flights.push(...flight.codeshare.map((code) => ({
+                                                ist_flights.push(...flight.codeshare.map((code) => ({
                                                     ...spread_fields,
                                                     'cs_airline_iata': spread_fields.airline_iata || null,
                                                     'cs_flight_number': spread_fields.flight_number || null,
@@ -212,15 +216,15 @@ function dataFlights() {
                                         }
                                         return { duplicates, unique };
                                     }
-                                    const { duplicates, unique } = unique_flights(flights, 'flight_iata');
+                                    const { duplicates, unique } = unique_flights(ist_flights, 'flight_iata');
                                     if (duplicates.length > 0) {
-                                        flights = unique;
+                                        ist_flights = unique;
                                     } else if (flights_fields.length >= page_size) {
                                         finished = false;
                                     } else {
                                         finished = true;
                                     } retry_done();
-                                    return flights;
+                                    return ist_flights;
 
                                 } catch (err) {
                                     console.error(`[error] [${err}]`);
@@ -229,7 +233,7 @@ function dataFlights() {
                             }, retry_done)
                     }, until_done)
                 }, () => {
-                    redisSet(redis_key, flights, (err) => {
+                    redisSet(redis_key, ist_flights, (err) => {
                         if (err) {
                             console.error('Error saving data:', err);
                         } else {
