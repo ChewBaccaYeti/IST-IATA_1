@@ -1,4 +1,3 @@
-const { NotFound } = require('http-errors');
 const _ = require('lodash');
 const async = require('async');
 const express = require('express');
@@ -17,11 +16,11 @@ const frmt = 'YYYY-MM-DD HH:mm:ss';
 const tmzn = 'Europe/Istanbul';
 const day = moment().tz(tmzn);
 const dates = [day.format(frmt), day.clone().add(1, 'd').format(frmt)];
-// const redis_url = 'redis://127.0.0.1:6379';
+const redis_url = 'redis://127.0.0.1:6379';
 const redis_key = 'airports:istanbul_1';
 
 const redis = require('redis')
-    .createClient({ socket: { host: 'redis://127.0.0.1', port: 6379 } })
+    .createClient({ url: redis_url, })
     .on('connect', () => {
         console.log(`[${day}] [redis] connected.`);
         dataFlights();
@@ -165,7 +164,7 @@ function dataFlights() {
                                             'arr_time_ts': status === 0 ? moment(flight.scheduledDatetime).tz(tmzn).unix() : null,
                                             'arr_time_utc': status === 0 ? moment.tz(tmzn).utc(flight.scheduledDatetime).format(frmt) : null,
                                         };
-                                        const dep_fields = {
+                                        const departure_fields = {
                                             'dep_checkin': status === 1 ? flight.counter : null,
                                             'dep_delayed': status === 1 ? (Math.abs(moment(flight.scheduledDatetime, frmt).diff(moment(flight.estimatedDatetime, frmt), 'minutes')) || null) : null,
                                             'dep_gate': status === 1 ? flight.gate : null,
@@ -179,7 +178,7 @@ function dataFlights() {
                                             ...info_fields,
                                             ...codeshare_fields,
                                             ...arrival_fields,
-                                            ...dep_fields,
+                                            ...departure_fields,
                                         };
                                         if (status === 1 ? flight : status === 0 ? flight : null) {
                                             ist_flights.push(spread_fields);
@@ -230,8 +229,9 @@ function dataFlights() {
                                     console.error(`[error] [${err}]`);
                                     return retry_done(true);
                                 }
-                            }, retry_done)
-                    }, until_done)
+
+                            }, retry_done);
+                    }, until_done);
                 }, () => {
                     redisSet(redis_key, ist_flights, (err) => {
                         if (err) {
@@ -240,8 +240,8 @@ function dataFlights() {
                             console.log(`[${day}][redis] data saved.`);
                         }
                     });
-                }, next_type())
-            }, next_status())
-        }, next_date())
+                }, next_type());
+            }, next_status());
+        }, next_date());
     });
 };
