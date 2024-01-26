@@ -222,7 +222,7 @@ function dataFlights() {
                                         finished = false;
                                     } else {
                                         finished = true;
-                                    } retry_done();
+                                    } retry_done(true);
                                     return ist_flights;
 
                                 } catch (err) {
