@@ -113,8 +113,8 @@ function dataFlights() {
                                     pageNumber: page,
                                     pageSize: page_size,
                                     '': [
-                                        `date=${dates[0]}`,
-                                        `endDate=${dates[1]}`,
+                                        `date=${date}`,
+                                        `endDate=${date}`,
                                     ],
                                     flightNature: status,
                                     isInternational: type,
@@ -219,10 +219,11 @@ function dataFlights() {
                                     if (duplicates.length > 0) {
                                         ist_flights = unique;
                                     } else if (flights_fields.length >= page_size) {
-                                        finished = false;
+                                        done = false;
                                     } else {
-                                        finished = true;
-                                    } retry_done(true);
+                                        done = true;
+                                    }
+                                    retry_done();
                                     return ist_flights;
 
                                 } catch (err) {
